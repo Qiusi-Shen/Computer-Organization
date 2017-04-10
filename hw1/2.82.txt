@@ -1,0 +1,38 @@
+A: False
+   (x<y) == (-x>-y)
+   if the x is Tmin, -Tmin = ~Tmin+1;
+   Tmin = 100...0 So -Tmin = Tmin;
+   Then Tmin > -y which is false.
+
+B: True
+   (x+y)<<4 = 16*x +16*y
+   (x+y)<<4 +y -x = 17*y + 15*x
+   So that expression is always true
+
+C:  True
+    ~x = -x-1  and ~y = -y-1
+    ~(x+y) = -(x+y)-1
+    so ~x + ~y +1 = -x-1-y-1+1 = -(x+y)-1 = ~(x+y)
+    
+D:  True
+   (ux - uy) == -(unsigned)(y-x) is true since bits are not change from
+   signed to unsigned. The value is the same when both of them are unsigned.
+   
+E:  True
+    ((x>>2)<<2) changes the right most two bits into 00.
+    If the original two right most bits are 00 the value stay the same.
+    Otherwise, the value become smaller as it is in the 2's compilment.
+
+F:  True
+    -1 = 1111111...1 so -1<<31 = 10000...0
+    except the most significant bit ux and x are the same by the difinition.
+    The most significant bit is to determin the sign. &10000..0 is to make
+    that bit stay the same during the change between signed and unsigned.
+
+G:  True
+    127 = 0000..000111111;
+    x&127 is just to get 6 right most number which is the same as %128
+
+
+
+    

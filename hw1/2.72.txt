@@ -1,0 +1,9 @@
+A: Since in the hint, the sizeof operator returns a value of type size_t.
+   And maxbytes is a integer. In the expression "maxbytes-sizeof(val) >=0"
+   If a signed int minus an unsigned int result is always unsigned int. 
+   So the result is always greater or equal to zero. The conditioni is always
+   succeeds.
+
+B: The condition should be signed int minus another signed int.
+   if ( maxbytes-((int)sizeof(val)) >= 0) 
+  
