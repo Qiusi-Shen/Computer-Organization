@@ -1,0 +1,70 @@
+3.67
+A:
+------high------------
+|
+|            ---  %rsp + 64 --> %rdi
+|     z      ---  %rsp + 24 -->  %rax
+|
+| s.p = &z    -----  %rsp + 16
+| s.a[1] = y  -----  %rsp + 8
+| s.a[0] = x  -----  %rsp
+|
+------low------------
+
+B:
+The eval will pass in the value stored at (%rsp + 64) to process.
+
+
+C:
+
+s.a[0] = x  %rsp + 8
+s.a[1] = y  %rsp + 16
+s.p = &z    %rsp + 24
+
+D:
+
+r.u[0] = s.a[1] = y : %rdi == %rax
+r.u[1] = s.a[0] = x : %rdi + 8
+r.q =    *s.p   = z : %rdi + 16
+
+It is in a reverse order y x z
+
+E:
+------high-------------------
+|
+|               %rsp + 104
+|               %rsp + 96
+|               %rsp + 88
+|r.q = z        %rsp + 80
+|r.u[1] = x     %rsp + 72
+|r.u[0] = y     %rsp + 64
+|
+|               %rsp + 32
+|     z         %rsp + 24
+|s.p    = &z    %rsp + 16
+|s.a[1] = y     &rsp + 8
+|s.a[0] = x     %rsp
+-------low-------------------
+
+F:
+To pass a structure as an argument. It is used as the
+address of structure first member.
+To return the function result, it is also used
+address to change the value in the structure.
+
+3.70
+
+A:
+e1.p:      0 byte
+e1.y:      8 bytes
+e2.x:      0 byte
+e2.next:   8 bytes
+
+B:
+struct e1 needs 8 bytes
+struct e2 needs 8 bytes
+
+C:
+void proc (union ele *up){
+     up->e2.x = *(up->e2.next->e1.p) - up->e2.next->e1.y;
+}     
