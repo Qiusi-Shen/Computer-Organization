@@ -1,0 +1,41 @@
+A. (float)x == (float)dx
+
+True. -fwrapv is not required.
+It is always yields 1.
+int x casted into dx and it will not lose any value.
+
+B. dx - dy == (double)(x - y)
+
+False.  -fwrapv is required.
+It will not always yield 1.
+
+let x be TMin_of_int and y be 1.
+dx - dy will not overflow and the x - y will overflow
+-fwrapv instruction will wrapp.
+
+C. (dx + dy) + dz == dx + (dy + dz)
+
+True.  -fwrapv is not required.
+It will always yields 1.
+
+dx dy dz are all come from an int cast into double.
+So we don't need to worry about overflow doing addtion.
+using -fwrapv will produce the same result.
+
+D. (dx * dy) *dz == dx * (dy *dz)
+
+False.  -fwrapv is required.
+It will not always yields 1.
+
+x, y, z can be very large integer
+such as INT_MAX. And they are casted into double.
+When they do multiplication. It is easy to overflow.
+-fwrapv will trap.
+
+E. dx / dx == dz / dz
+
+False.  -fwrapv is required.
+It will not always yields 1.
+
+let x be 0 and y be 1
+0/0 = NaN and 1/1 = 1.
